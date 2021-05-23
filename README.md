@@ -1,5 +1,5 @@
 # Configure
-`configure.py` 是一个轻量级的C/C++构建系统。它会自动加载目录下的所有`BUILD.py`文件，生成`build.ninja`，最后交由ninja来执行构建。整个工程只有一个python文件：`configure.py`，直接拷贝到项目中即可使用。
+`configure.py` 是一个轻量级的C/C++构建系统。它会自动加载目录下的所有`BUILD.py`文件，生成`build.ninja`，最后交由ninja来执行构建。
 
 # Usgae
 ## 1. 构建可执行程序

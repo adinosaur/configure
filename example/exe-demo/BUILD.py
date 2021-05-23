@@ -1,3 +1,5 @@
+# -*- coding=utf-8 -*-
+
 from __main__ import ExeTarget
 import glob
 

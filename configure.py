@@ -6,8 +6,11 @@ import re
 import sys
 import subprocess
 import textwrap
-import importlib.machinery
-from io import StringIO
+
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
 
 
 Targets = []
@@ -34,7 +37,7 @@ def escape_path(word):
     return word.replace('$ ', '$$ ').replace(' ', '$ ').replace(':', '$:')
 
 class NinjaWriter(object):
-    def __init__(self, output, width=78):
+    def __init__(self, output, width=144):
         self.output = output
         self.width = width
 
@@ -377,6 +380,21 @@ class StaticLibraryTarget(object):
         archives_target.generate_ninja_build(writer)
 
 # ======================================
+# Load module
+# ======================================
+def __load_module(module_name, file_path):
+    try:
+        import importlib.machinery
+        loader = importlib.machinery.SourceFileLoader(module_name, file_path)
+        return loader.load_module()
+
+    except ImportError:
+        import imp
+        return imp.load_source(module_name, file_path)
+    
+    return None
+
+# ======================================
 # Main
 # ======================================
 def main():
@@ -389,8 +407,7 @@ def main():
                 targets_cnt += 1
                 module_name = '__build_target%s' % targets_cnt
                 file_path = os.path.join(path, file)
-                loader = importlib.machinery.SourceFileLoader(module_name, file_path)
-                _ = loader.load_module()
+                __load_module(module_name, file_path)
 
     # generate ninja
     out = StringIO()
