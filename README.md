@@ -55,4 +55,7 @@ class StaticLibraryDemo(StaticLibraryTarget):
         self.srcs = ['example/staticlib-demo/y.cpp']    # 源文件列表
 ```
 
+# Noted
+在windows下编译时需要把`cl.exe`，`link.exe`，`lib.exe`所在目录加入到环境变量`$PATH`中，或者是通过**Vsiual Studio**提供的`Developer Command Prompt`程序来运行**configure.py**
+
 enjoy it!

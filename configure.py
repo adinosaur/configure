@@ -19,9 +19,19 @@ Targets = []
 # Config
 # ======================================
 BuildOutput = 'build'
-CC = 'gcc'
-CXX = 'g++'
-AR = 'ar'
+
+if os.name == 'posix':
+    CC = 'gcc'
+    CXX = 'g++'
+    LD = 'g++'
+    AR = 'ar'
+    OBJ_EXTENSION = '.o'
+elif os.name == 'nt':
+    CC = 'cl.exe'
+    CXX = 'cl.exe'
+    LD = 'link.exe'
+    AR = 'lib.exe'
+    OBJ_EXTENSION = '.obj'
 
 # ======================================
 # NinjaWriter
@@ -220,13 +230,19 @@ class CxxTarget(object):
     
     @classmethod
     def generate_ninja_rule(cls, writer):
-        writer.rule('cxx', '{cxx} -o $out -c $in -MMD -MF $in.d $cxxflags $incs'.format(cxx=CXX), description='CXX $in', depfile='$in.d', deps='gcc')
+        if os.name == 'posix':
+            writer.rule('cxx', '{cxx} -o $out -c $in -MMD -MF $in.d $cxxflags $incs'.format(cxx=CXX), description='CXX $in', depfile='$in.d', deps='gcc')
+        elif os.name == 'nt':
+            writer.rule('cxx', '{cxx} /showIncludes /Fo$out -c $in $cxxflags $incs'.format(cxx=CXX), description='CXX $in', deps='msvc')
         writer.newline()
 
     def generate_ninja_build(self, writer):
         target = self.name
         cxxflags = ' '.join(self.cxxflags)
-        incs = ' '.join(['-I' + inc for inc in self.incs])
+        if os.name == 'posix':
+            incs = ' '.join(['-I' + inc for inc in self.incs])
+        elif os.name == 'nt':
+            incs = ' '.join(['/I' + inc for inc in self.incs])
         writer.comment('=== build cxx target: {target} ==='.format(target=target))
         writer.build(target, 'cxx', inputs=self.src, variables={'cxxflags':cxxflags, 'incs':incs})
         writer.newline()
@@ -246,15 +262,18 @@ class LinkTarget(object):
     
     @classmethod
     def generate_ninja_rule(cls, writer):
-        writer.rule('link', '{cxx} -o $out $in $libs $ldflags'.format(cxx=CXX), description='LINK $out')
+        if os.name == 'posix':
+            writer.rule('link', '{ld} -o $out $in $libs $ldflags'.format(ld=LD), description='LINK $out')
+        elif os.name == 'nt':
+            writer.rule('link', '{ld} /OUT:$out $in $libs $ldflags'.format(ld=LD), description='LINK $out')
         writer.newline()
     
     def generate_ninja_build(self, writer):
         target = self.name
         ldflags = ' '.join(self.ldflags)
-        inputs = self.objs + self.libs
+        inputs = self.objs
         writer.comment('=== build link target: {target} ==='.format(target=target))
-        writer.build(target, 'link', inputs=inputs, variables={'ldflags':ldflags})
+        writer.build(target, 'link', inputs=inputs, variables={'ldflags':ldflags, 'libs':self.libs}, implicit=self.deps)
         writer.newline()
 
 # ======================================
@@ -269,7 +288,10 @@ class ArchivesTarget(object):
     
     @classmethod
     def generate_ninja_rule(cls, writer):
-        writer.rule('ar', '{ar} rcs $out $in'.format(ar=AR), description='AR $out')
+        if os.name == 'posix':
+            writer.rule('ar', '{ar} rcs $out $in'.format(ar=AR), description='AR $out')
+        elif os.name == 'nt':
+            writer.rule('ar', '{ar} /OUT:$out $in'.format(ar=AR), description='AR $out')
         writer.newline()
     
     def generate_ninja_build(self, writer):
@@ -299,7 +321,7 @@ class ExeTarget(object):
         objs = []
         for src in self.srcs:
             cxx_target = CxxTarget()
-            cxx_target.name = os.path.join(BuildOutput, src) + '.o'
+            cxx_target.name = os.path.join(BuildOutput, src) + OBJ_EXTENSION
             cxx_target.cxxflags = self.cxxflags
             cxx_target.incs = self.incs
             cxx_target.src = src
@@ -335,7 +357,7 @@ class SharedLibraryTarget(object):
         objs = []
         for src in self.srcs:
             cxx_target = CxxTarget()
-            cxx_target.name = os.path.join(BuildOutput, src) + '.o'
+            cxx_target.name = os.path.join(BuildOutput, src) + OBJ_EXTENSION
             cxx_target.cxxflags = self.cxxflags
             cxx_target.incs = self.incs
             cxx_target.src = src
@@ -345,7 +367,11 @@ class SharedLibraryTarget(object):
         link_target = LinkTarget()
         link_target.name = os.path.join(BuildOutput, self.name)
         link_target.deps = self.deps
-        link_target.ldflags = ['-shared'] + self.ldflags
+        link_target.ldflags = self.ldflags
+        if os.name == 'posix':
+            link_target.ldflags += ['-shared']
+        elif os.name == 'nt':
+            link_target.ldflags += ['/DLL']
         link_target.libs = self.libs
         link_target.objs = objs
         link_target.generate_ninja_build(writer)
@@ -367,7 +393,7 @@ class StaticLibraryTarget(object):
         objs = []
         for src in self.srcs:
             cxx_target = CxxTarget()
-            cxx_target.name = os.path.join(BuildOutput, src) + '.o'
+            cxx_target.name = os.path.join(BuildOutput, src) + OBJ_EXTENSION
             cxx_target.cxxflags = self.cxxflags
             cxx_target.incs = self.incs
             cxx_target.src = src
@@ -431,7 +457,10 @@ def main():
     out.close()
 
     # run ninja
-    p = subprocess.Popen('ninja/ninja-linux/ninja', shell=True)
+    if os.name == 'posix':
+        p = subprocess.Popen('ninja/ninja-linux/ninja', shell=True)
+    elif os.name == 'nt':
+        p = subprocess.Popen('ninja\\ninja-win\\ninja.exe', shell=True)
     p.communicate()
     return p.returncode
 
