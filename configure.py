@@ -226,14 +226,15 @@ class CxxTarget(object):
         self.name = None
         self.cxxflags = []  # 编译参数
         self.incs = []      # 头文件搜索路径
+        self.defs = []      # 宏定义
         self.src = None     # 源文件
     
     @classmethod
     def generate_ninja_rule(cls, writer):
         if os.name == 'posix':
-            writer.rule('cxx', '{cxx} -o $out -c $in -MMD -MF $in.d $cxxflags $incs'.format(cxx=CXX), description='CXX $in', depfile='$in.d', deps='gcc')
+            writer.rule('cxx', '{cxx} -o $out -c $in -MMD -MF $in.d $cxxflags $incs $defs'.format(cxx=CXX), description='CXX $in', depfile='$in.d', deps='gcc')
         elif os.name == 'nt':
-            writer.rule('cxx', '{cxx} /showIncludes /Fo$out -c $in $cxxflags $incs'.format(cxx=CXX), description='CXX $in', deps='msvc')
+            writer.rule('cxx', '{cxx} /showIncludes /Fo$out -c $in $cxxflags $incs $defs'.format(cxx=CXX), description='CXX $in', deps='msvc')
         writer.newline()
 
     def generate_ninja_build(self, writer):
@@ -241,10 +242,12 @@ class CxxTarget(object):
         cxxflags = ' '.join(self.cxxflags)
         if os.name == 'posix':
             incs = ' '.join(['-I' + inc for inc in self.incs])
+            defs = ' '.join(['-D' + define for define in self.defs])
         elif os.name == 'nt':
             incs = ' '.join(['/I' + inc for inc in self.incs])
+            defs = ' '.join(['/D ' + define for define in self.defs])
         writer.comment('=== build cxx target: {target} ==='.format(target=target))
-        writer.build(target, 'cxx', inputs=self.src, variables={'cxxflags':cxxflags, 'incs':incs})
+        writer.build(target, 'cxx', inputs=self.src, variables={'cxxflags':cxxflags, 'incs':incs, 'defs':defs})
         writer.newline()
 
 # ======================================
@@ -311,8 +314,8 @@ class ExeTarget(object):
         self.name = None
         self.cxxflags = []  # 编译参数
         self.incs = []      # 头文件搜索路径
+        self.defs = []      # 宏定义
         self.srcs = []      # 源文件列表
-
         self.deps = []      # 链接的依赖文件
         self.ldflags = []   # 链接的参数
         self.libs = []      # 链接的库文件
@@ -324,6 +327,7 @@ class ExeTarget(object):
             cxx_target.name = os.path.join(BuildOutput, src) + OBJ_EXTENSION
             cxx_target.cxxflags = self.cxxflags
             cxx_target.incs = self.incs
+            cxx_target.defs = self.defs
             cxx_target.src = src
             cxx_target.generate_ninja_build(writer)
             objs.append(cxx_target.name)
@@ -347,8 +351,8 @@ class SharedLibraryTarget(object):
         self.name = None
         self.cxxflags = []  # 编译参数
         self.incs = []      # 头文件搜索路径
+        self.defs = []      # 宏定义
         self.srcs = []      # 源文件列表
-
         self.deps = []      # 链接的依赖文件
         self.ldflags = []   # 链接的参数
         self.libs = []      # 链接的库文件
@@ -360,6 +364,7 @@ class SharedLibraryTarget(object):
             cxx_target.name = os.path.join(BuildOutput, src) + OBJ_EXTENSION
             cxx_target.cxxflags = self.cxxflags
             cxx_target.incs = self.incs
+            cxx_target.defs = self.defs
             cxx_target.src = src
             cxx_target.generate_ninja_build(writer)
             objs.append(cxx_target.name)
@@ -387,6 +392,7 @@ class StaticLibraryTarget(object):
         self.name = None
         self.cxxflags = []  # 编译参数
         self.incs = []      # 头文件搜索路径
+        self.defs = []      # 宏定义
         self.srcs = []      # 源文件列表
     
     def generate_ninja_build(self, writer):
@@ -396,6 +402,7 @@ class StaticLibraryTarget(object):
             cxx_target.name = os.path.join(BuildOutput, src) + OBJ_EXTENSION
             cxx_target.cxxflags = self.cxxflags
             cxx_target.incs = self.incs
+            cxx_target.defs = self.defs
             cxx_target.src = src
             cxx_target.generate_ninja_build(writer)
             objs.append(cxx_target.name)
