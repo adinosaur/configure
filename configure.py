@@ -428,21 +428,14 @@ class UserTarget(object):
         vcxproj_filepath = os.path.join(os.path.split(self.__file__)[0], vcxproj_filename)
         vcxproj = Vcxproj(vcxproj_filepath)
         vcxproj.cxxflags = self.cxxflags
-        vcxproj.cl_compile = [os.path.join(os.getcwd(), x) for x in self.srcs]
         vcxproj.preprocessor_definitions = self.defs
+        vcxproj.cl_compile = [os.path.join(os.getcwd(), x) for x in self.srcs]
         vcxproj.additional_include_dirctories = [os.path.join(os.getcwd(), x) for x in self.incs]
+        vcxproj.cl_include = [os.path.join(os.getcwd(), x) for x in self.hdrs]
 
         libs = getattr(self, 'libs', None)
         if libs:
             vcxproj.additional_dependencies = self.libs
-        
-        hdrs = set()
-        for src in vcxproj.cl_compile:
-            for hdr in glob.glob(os.path.join(os.path.split(src)[0], '*.h')):
-                hdrs.add(hdr)
-            for hdr in glob.glob(os.path.join(os.path.split(src)[0], '*.hpp')):
-                hdrs.add(hdr)
-        vcxproj.cl_include = list(hdrs)
         
         vcxproj.generate()
 
@@ -458,6 +451,7 @@ class ExeTarget(UserTarget):
         self.cxxflags = []  # 编译参数
         self.incs = []      # 头文件搜索路径
         self.defs = []      # 宏定义
+        self.hdrs = []      # 头文件列表
         self.srcs = []      # 源文件列表
         self.deps = []      # 链接的依赖文件
         self.ldflags = []   # 链接的参数
@@ -495,6 +489,7 @@ class SharedLibraryTarget(UserTarget):
         self.cxxflags = []  # 编译参数
         self.incs = []      # 头文件搜索路径
         self.defs = []      # 宏定义
+        self.hdrs = []      # 头文件列表
         self.srcs = []      # 源文件列表
         self.deps = []      # 链接的依赖文件
         self.ldflags = []   # 链接的参数
@@ -536,6 +531,7 @@ class StaticLibraryTarget(UserTarget):
         self.cxxflags = []  # 编译参数
         self.incs = []      # 头文件搜索路径
         self.defs = []      # 宏定义
+        self.hdrs = []      # 头文件列表
         self.srcs = []      # 源文件列表
     
     def generate_ninja_build(self, writer):
