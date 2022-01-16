@@ -6,6 +6,9 @@ import re
 import sys
 import subprocess
 import textwrap
+import argparse
+import uuid
+import glob
 
 try:
     from StringIO import StringIO
@@ -32,6 +35,106 @@ elif os.name == 'nt':
     LD = 'link.exe'
     AR = 'lib.exe'
     OBJ_EXTENSION = '.obj'
+
+# ======================================
+# Vcxproj
+# ======================================
+class Vcxproj(object):
+
+    def __init__(self, filepath):
+        directory, filename = os.path.split(filepath)
+        self.filepath = filepath
+        self.root_namespace = filename
+        self.platforms = ['Win32', 'x64']
+        self.configurations = ['Debug', 'Release']
+        self.guid = uuid.uuid5(uuid.NAMESPACE_URL, filepath)
+        
+        self.cl_include = []
+        self.cl_compile = []
+        self.preprocessor_definitions = []
+        self.additional_include_dirctories = []
+        self.additional_dependencies = []
+        self.additional_library_directories = []
+
+
+    def get_content(self):
+        content = []
+        ap = content.append
+
+        ap('<?xml version="1.0" encoding="utf-8"?>')
+        ap('<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns=\'http://schemas.microsoft.com/developer/msbuild/2003\' >')
+        ap('  <ItemGroup Label="ProjectConfigurations">')
+        for configuration in self.configurations:
+            for platform in self.platforms:
+                ap('    <ProjectConfiguration Include="{Configuration}|{Platform}">'.format(Configuration=configuration, Platform=platform))
+                ap('      <Configuration>{Configuration}</Configuration>'.format(Configuration=configuration))
+                ap('      <Platform>{Platform}</Platform>'.format(Platform=platform))
+                ap('    </ProjectConfiguration>')
+        ap('  </ItemGroup>')
+        ap('  <PropertyGroup Label="Globals">')
+        ap('    <ProjectGuid>{ProjectGuid}</ProjectGuid>'.format(ProjectGuid=self.guid))
+        ap('    <RootNamespace>{RootNamespace}</RootNamespace>'.format(RootNamespace=self.root_namespace))
+        ap('    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>')
+        ap('  </PropertyGroup>')
+        ap('  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />')
+        for configuration in self.configurations:
+            for platform in self.platforms:
+                ap('  <PropertyGroup Condition="\'$(Configuration)|$(Platform)\'==\'{Configuration}|{Platform}\'" Label="Configuration">'.format(Configuration=configuration, Platform=platform))
+                ap('    <ConfigurationType>Application</ConfigurationType>')
+                ap('    <UseDebugLibraries>{UseDebugLibraries}</UseDebugLibraries>'.format(UseDebugLibraries=(configuration=='Debug')))
+                ap('    <CharacterSet>Unicode</CharacterSet>')
+                ap('    <PlatformToolset>v143</PlatformToolset>')
+                ap('  </PropertyGroup>')
+        ap('  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />')
+        ap('  <ImportGroup Label="ExtensionSettings">')
+        ap('  </ImportGroup>')
+        for configuration in self.configurations:
+            for platform in self.platforms:
+                ap('  <ImportGroup Label="PropertySheets" Condition="\'$(Configuration)|$(Platform)\'==\'{Configuration}|{Platform}\'">'.format(Configuration=configuration, Platform=platform))
+                ap('    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists(\'$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props\')" Label="LocalAppDataPlatform" />')
+                ap('  </ImportGroup>')
+        ap('  <PropertyGroup Label="UserMacros" />')
+        for configuration in self.configurations:
+            for platform in self.platforms:
+                ap('  <PropertyGroup Condition="\'$(Configuration)|$(Platform)\'==\'{Configuration}|{Platform}\'">'.format(Configuration=configuration, Platform=platform))
+                ap('    <OutDir>$(ProjectDir)$(Configuration)\</OutDir>')
+                ap('    <IntDir>$(ProjectDir)$(Configuration)\</IntDir>')
+                ap('  </PropertyGroup>')
+        for configuration in self.configurations:
+            for platform in self.platforms:
+                ap('  <ItemDefinitionGroup Condition="\'$(Configuration)|$(Platform)\'==\'{Configuration}|{Platform}\'">'.format(Configuration=configuration, Platform=platform))
+                ap('    <ClCompile>')
+                ap('      <WarningLevel>Level4</WarningLevel>')
+                if configuration == 'Debug':
+                    ap('      <Optimization>Disabled</Optimization>')
+                else:
+                    ap('      <Optimization>MaxSpeed</Optimization>')
+                ap('      <AdditionalIncludeDirectories>{AdditionalIncludeDirectories};%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>'.format(AdditionalIncludeDirectories=';'.join(self.additional_include_dirctories)))
+                ap('      <PreprocessorDefinitions>{PreprocessorDefinitions};%(PreprocessorDefinitions)</PreprocessorDefinitions>'.format(PreprocessorDefinitions=';'.join(self.preprocessor_definitions)))
+                ap('    </ClCompile>')
+                ap('    <Link>')
+                ap('      <GenerateDebugInformation>true</GenerateDebugInformation>')
+                ap('      <AdditionalDependencies>{AdditionalDependencies};%(AdditionalDependencies)</AdditionalDependencies>'.format(AdditionalDependencies=';'.join(self.additional_dependencies)))
+                ap('      <AdditionalLibraryDirectories>{AdditionalLibraryDirectories}%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>'.format(AdditionalLibraryDirectories=';'.join(self.additional_library_directories)))
+                ap('    </Link>')
+                ap('  </ItemDefinitionGroup>')
+        ap('  <ItemGroup>')
+        for ins in self.cl_include:
+            ap('    <ClInclude Include="{ins}" />'.format(ins=ins))
+        ap('  </ItemGroup>')
+        ap('  <ItemGroup>')
+        for src in self.cl_compile:
+            ap('    <ClCompile Include="{src}" />'.format(src=src))
+        ap('  </ItemGroup>')
+        ap('  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />')
+        ap('  <ImportGroup Label="ExtensionTargets">')
+        ap('  </ImportGroup>')
+        ap('</Project>')
+        return '\n'.join(content)
+
+    def generate(self):
+        with open(self.filepath, 'w') as f:
+            f.write(self.get_content())
 
 # ======================================
 # NinjaWriter
@@ -304,9 +407,39 @@ class ArchivesTarget(object):
         writer.newline()
 
 # ======================================
+# User Target
+# ======================================
+class UserTarget(object):
+    def __init__(self):
+        super(UserTarget, self).__init__()
+        self.__file__ = CurrLodingFilePath
+
+    def generate_vcxproj(self):
+        vcxproj_filename = self.__class__.__name__ + '.vcxproj'
+        vcxproj_filepath = os.path.join(os.path.split(self.__file__)[0], vcxproj_filename)
+        vcxproj = Vcxproj(vcxproj_filepath)
+        
+        vcxproj.cl_compile = [os.path.join(os.getcwd(), x) for x in self.srcs]
+        vcxproj.additional_include_dirctories = [os.path.join(os.getcwd(), x) for x in self.incs]
+
+        libs = getattr(self, 'libs', None)
+        if libs:
+            vcxproj.additional_dependencies = [os.path.join(os.getcwd(), x) for x in self.libs]
+        
+        hdrs = set()
+        for src in vcxproj.cl_compile:
+            for hdr in glob.glob(os.path.join(os.path.split(src)[0], '*.h')):
+                hdrs.add(hdr)
+            for hdr in glob.glob(os.path.join(os.path.split(src)[0], '*.hpp')):
+                hdrs.add(hdr)
+        vcxproj.cl_include = list(hdrs)
+        
+        vcxproj.generate()
+
+# ======================================
 # Exe Target
 # ======================================
-class ExeTarget(object):
+class ExeTarget(UserTarget):
     def __init__(self):
         super(ExeTarget, self).__init__()
         Targets.append(self)
@@ -343,7 +476,7 @@ class ExeTarget(object):
 # ======================================
 # Shared Library Target
 # ======================================
-class SharedLibraryTarget(object):
+class SharedLibraryTarget(UserTarget):
     def __init__(self):
         super(SharedLibraryTarget, self).__init__()
         Targets.append(self)
@@ -384,7 +517,7 @@ class SharedLibraryTarget(object):
 # ======================================
 # Static Library Target
 # ======================================
-class StaticLibraryTarget(object):
+class StaticLibraryTarget(UserTarget):
     def __init__(self):
         super(StaticLibraryTarget, self).__init__()
         Targets.append(self)
@@ -416,21 +549,32 @@ class StaticLibraryTarget(object):
 # Load module
 # ======================================
 def __load_module(module_name, file_path):
+
+    global CurrLodingFilePath
+    CurrLodingFilePath = file_path
+
     try:
         import importlib.machinery
         loader = importlib.machinery.SourceFileLoader(module_name, file_path)
-        return loader.load_module()
+        mod =  loader.load_module()
 
     except ImportError:
         import imp
-        return imp.load_source(module_name, file_path)
+        mod = imp.load_source(module_name, file_path)
     
-    return None
+    CurrLodingFilePath = None
+
+    return mod
+
+CurrLodingFilePath = None
 
 # ======================================
 # Main
 # ======================================
 def main():
+    parser = argparse.ArgumentParser(description='configure c/c++ build system')
+    parser.add_argument('--generate-vcxproj', action='store_true', help='generate visual stdio project file (.vcxproj)')
+    args = parser.parse_args()
 
     # load BUILD.py
     targets_cnt = 0
@@ -441,6 +585,12 @@ def main():
                 module_name = '__build_target%s' % targets_cnt
                 file_path = os.path.join(path, file)
                 __load_module(module_name, file_path)
+    
+    # generate .vscproj
+    if args.generate_vcxproj:
+        for target in Targets:
+            target.generate_vcxproj()
+        return
 
     # generate ninja
     out = StringIO()
