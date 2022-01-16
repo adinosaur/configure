@@ -48,6 +48,7 @@ class Vcxproj(object):
         self.platforms = ['Win32', 'x64']
         self.configurations = ['Debug', 'Release']
         self.guid = uuid.uuid5(uuid.NAMESPACE_URL, filepath)
+        self.cxxflags = []
         
         self.cl_include = []
         self.cl_compile = []
@@ -56,6 +57,13 @@ class Vcxproj(object):
         self.additional_dependencies = []
         self.additional_library_directories = []
 
+    def get_cppstd(self):
+        cppstds = {'c++98':'stdcpp98','c++03':'stdcpp03','c++11':'stdcpp11','c++14':'stdcpp14','c++17':'stdcpp17','c++20':'stdcpp20'}
+        for cxxflag in self.cxxflags:
+            for cppstd_k, cppstd_v in cppstds.items():
+                if cppstd_k in cxxflag:
+                    return cppstd_v
+        return 'stdcpp11'
 
     def get_content(self):
         content = []
@@ -66,22 +74,22 @@ class Vcxproj(object):
         ap('  <ItemGroup Label="ProjectConfigurations">')
         for configuration in self.configurations:
             for platform in self.platforms:
-                ap('    <ProjectConfiguration Include="{Configuration}|{Platform}">'.format(Configuration=configuration, Platform=platform))
-                ap('      <Configuration>{Configuration}</Configuration>'.format(Configuration=configuration))
-                ap('      <Platform>{Platform}</Platform>'.format(Platform=platform))
+                ap('    <ProjectConfiguration Include="{0}|{1}">'.format(configuration, platform))
+                ap('      <Configuration>{0}</Configuration>'.format(configuration))
+                ap('      <Platform>{0}</Platform>'.format(platform))
                 ap('    </ProjectConfiguration>')
         ap('  </ItemGroup>')
         ap('  <PropertyGroup Label="Globals">')
-        ap('    <ProjectGuid>{ProjectGuid}</ProjectGuid>'.format(ProjectGuid=self.guid))
-        ap('    <RootNamespace>{RootNamespace}</RootNamespace>'.format(RootNamespace=self.root_namespace))
+        ap('    <ProjectGuid>{0}</ProjectGuid>'.format(self.guid))
+        ap('    <RootNamespace>{0}</RootNamespace>'.format(self.root_namespace))
         ap('    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>')
         ap('  </PropertyGroup>')
         ap('  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />')
         for configuration in self.configurations:
             for platform in self.platforms:
-                ap('  <PropertyGroup Condition="\'$(Configuration)|$(Platform)\'==\'{Configuration}|{Platform}\'" Label="Configuration">'.format(Configuration=configuration, Platform=platform))
+                ap('  <PropertyGroup Condition="\'$(Configuration)|$(Platform)\'==\'{0}|{1}\'" Label="Configuration">'.format(configuration, platform))
                 ap('    <ConfigurationType>Application</ConfigurationType>')
-                ap('    <UseDebugLibraries>{UseDebugLibraries}</UseDebugLibraries>'.format(UseDebugLibraries=(configuration=='Debug')))
+                ap('    <UseDebugLibraries>{0}</UseDebugLibraries>'.format(configuration=='Debug'))
                 ap('    <CharacterSet>Unicode</CharacterSet>')
                 ap('    <PlatformToolset>v143</PlatformToolset>')
                 ap('  </PropertyGroup>')
@@ -90,41 +98,42 @@ class Vcxproj(object):
         ap('  </ImportGroup>')
         for configuration in self.configurations:
             for platform in self.platforms:
-                ap('  <ImportGroup Label="PropertySheets" Condition="\'$(Configuration)|$(Platform)\'==\'{Configuration}|{Platform}\'">'.format(Configuration=configuration, Platform=platform))
+                ap('  <ImportGroup Label="PropertySheets" Condition="\'$(Configuration)|$(Platform)\'==\'{0}|{1}\'">'.format(configuration, platform))
                 ap('    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists(\'$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props\')" Label="LocalAppDataPlatform" />')
                 ap('  </ImportGroup>')
         ap('  <PropertyGroup Label="UserMacros" />')
         for configuration in self.configurations:
             for platform in self.platforms:
-                ap('  <PropertyGroup Condition="\'$(Configuration)|$(Platform)\'==\'{Configuration}|{Platform}\'">'.format(Configuration=configuration, Platform=platform))
+                ap('  <PropertyGroup Condition="\'$(Configuration)|$(Platform)\'==\'{0}|{1}\'">'.format(configuration, platform))
                 ap('    <OutDir>$(ProjectDir)$(Configuration)\</OutDir>')
                 ap('    <IntDir>$(ProjectDir)$(Configuration)\</IntDir>')
                 ap('  </PropertyGroup>')
         for configuration in self.configurations:
             for platform in self.platforms:
-                ap('  <ItemDefinitionGroup Condition="\'$(Configuration)|$(Platform)\'==\'{Configuration}|{Platform}\'">'.format(Configuration=configuration, Platform=platform))
+                ap('  <ItemDefinitionGroup Condition="\'$(Configuration)|$(Platform)\'==\'{0}|{1}\'">'.format(configuration, platform))
                 ap('    <ClCompile>')
                 ap('      <WarningLevel>Level4</WarningLevel>')
                 if configuration == 'Debug':
                     ap('      <Optimization>Disabled</Optimization>')
                 else:
                     ap('      <Optimization>MaxSpeed</Optimization>')
-                ap('      <AdditionalIncludeDirectories>{AdditionalIncludeDirectories};%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>'.format(AdditionalIncludeDirectories=';'.join(self.additional_include_dirctories)))
-                ap('      <PreprocessorDefinitions>{PreprocessorDefinitions};%(PreprocessorDefinitions)</PreprocessorDefinitions>'.format(PreprocessorDefinitions=';'.join(self.preprocessor_definitions)))
+                ap('      <LanguageStandard>{0}</LanguageStandard>'.format(self.get_cppstd()))
+                ap('      <AdditionalIncludeDirectories>{0};%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>'.format(';'.join(self.additional_include_dirctories)))
+                ap('      <PreprocessorDefinitions>{0};%(PreprocessorDefinitions)</PreprocessorDefinitions>'.format(';'.join(self.preprocessor_definitions)))
                 ap('    </ClCompile>')
                 ap('    <Link>')
                 ap('      <GenerateDebugInformation>true</GenerateDebugInformation>')
-                ap('      <AdditionalDependencies>{AdditionalDependencies};%(AdditionalDependencies)</AdditionalDependencies>'.format(AdditionalDependencies=';'.join(self.additional_dependencies)))
-                ap('      <AdditionalLibraryDirectories>{AdditionalLibraryDirectories}%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>'.format(AdditionalLibraryDirectories=';'.join(self.additional_library_directories)))
+                ap('      <AdditionalDependencies>{0};%(AdditionalDependencies)</AdditionalDependencies>'.format(';'.join(self.additional_dependencies)))
+                ap('      <AdditionalLibraryDirectories>{0}%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>'.format(';'.join(self.additional_library_directories)))
                 ap('    </Link>')
                 ap('  </ItemDefinitionGroup>')
         ap('  <ItemGroup>')
         for ins in self.cl_include:
-            ap('    <ClInclude Include="{ins}" />'.format(ins=ins))
+            ap('    <ClInclude Include="{0}" />'.format(ins))
         ap('  </ItemGroup>')
         ap('  <ItemGroup>')
         for src in self.cl_compile:
-            ap('    <ClCompile Include="{src}" />'.format(src=src))
+            ap('    <ClCompile Include="{0}" />'.format(src))
         ap('  </ItemGroup>')
         ap('  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />')
         ap('  <ImportGroup Label="ExtensionTargets">')
@@ -418,13 +427,14 @@ class UserTarget(object):
         vcxproj_filename = self.__class__.__name__ + '.vcxproj'
         vcxproj_filepath = os.path.join(os.path.split(self.__file__)[0], vcxproj_filename)
         vcxproj = Vcxproj(vcxproj_filepath)
-        
+        vcxproj.cxxflags = self.cxxflags
         vcxproj.cl_compile = [os.path.join(os.getcwd(), x) for x in self.srcs]
+        vcxproj.preprocessor_definitions = self.defs
         vcxproj.additional_include_dirctories = [os.path.join(os.getcwd(), x) for x in self.incs]
 
         libs = getattr(self, 'libs', None)
         if libs:
-            vcxproj.additional_dependencies = [os.path.join(os.getcwd(), x) for x in self.libs]
+            vcxproj.additional_dependencies = self.libs
         
         hdrs = set()
         for src in vcxproj.cl_compile:
