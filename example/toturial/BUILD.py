@@ -21,6 +21,7 @@ class Toturial(ExeTarget):
             self.libs = [
                 'build/example/staticlib-demo/liby.a',
                 'build/example/sharedlib-demo/libx.so',
+                '-ldl',
             ]
 
         elif os.name == 'nt':

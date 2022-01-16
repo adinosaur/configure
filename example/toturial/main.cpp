@@ -19,7 +19,7 @@ int main()
     DLLPROC func_in_x = (DLLPROC)GetProcAddress(hDLL, "func_in_x");
     assert(func_in_x);
 #else
-    void* handle = dlopen("build/example/sharedlib-demo/libx.dll", RTLD_LAZY);
+    void* handle = dlopen("build/example/sharedlib-demo/libx.so", RTLD_LAZY);
     assert(handle);
 
     typedef int (*FuncType)();
