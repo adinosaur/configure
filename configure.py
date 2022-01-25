@@ -19,6 +19,8 @@ except ImportError:
 Targets = []
 Args = None
 
+default_build_setting = None
+
 # ======================================
 # Config
 # ======================================
@@ -551,6 +553,13 @@ class UserTarget(object):
             vcxproj.additional_dependencies = self.libs
         
         vcxproj.generate()
+    
+    def init_from_default_build_setting(self):
+        if default_build_setting:
+            for k in default_build_setting.EXPORT:
+                if type(k) is str and k in self.__dict__:
+                    v = default_build_setting.__dict__[k]
+                    setattr(self, k, v)
 
 # ======================================
 # Exe Target
@@ -572,6 +581,7 @@ class ExeTarget(UserTarget):
         self.libs = []      # 链接的库文件
 
         self.enable_unity = False # 是否开启unity编译
+        self.init_from_default_build_setting()
 
     def generate_ninja_build(self, writer):
         objs = []
@@ -630,6 +640,7 @@ class SharedLibraryTarget(UserTarget):
         self.libs = []      # 链接的库文件
 
         self.enable_unity = False # 是否开启unity编译
+        self.init_from_default_build_setting()
     
     def generate_ninja_build(self, writer):
         objs = []
@@ -688,6 +699,7 @@ class StaticLibraryTarget(UserTarget):
         self.srcs = []      # 源文件列表
 
         self.enable_unity = False # 是否开启unity编译
+        self.init_from_default_build_setting()
     
     def generate_ninja_build(self, writer):
         objs = []
@@ -758,7 +770,7 @@ def main():
     args = parser.parse_args()
 
     global CC, CXX
-    
+
     if args.distcc:
         CC = 'distcc ' + CC
         CXX = 'distcc ' + CXX
@@ -770,6 +782,13 @@ def main():
     # setup args
     global Args
     Args = args
+
+    # load default setting
+    try:
+        global default_build_setting
+        import default_build_setting
+    except ImportError:
+        pass
 
     # setup variables
     setup_variables()
