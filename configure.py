@@ -21,8 +21,6 @@ Targets = []
 # ======================================
 # Config
 # ======================================
-BuildOutput = 'build'
-
 if os.name == 'posix':
     CC = 'gcc'
     CXX = 'g++'
@@ -35,6 +33,23 @@ elif os.name == 'nt':
     LD = 'link.exe'
     AR = 'lib.exe'
     OBJ_EXTENSION = '.obj'
+
+
+# ======================================
+# Variables
+# ======================================
+Variables = {}
+
+def setup_variables(args):
+    Variables['args'] = args
+    Variables['build_dir'] = '.build_debug' if args.type == 'debug' else '.build_release'
+
+def format_variables(paths):
+    if type(paths) is str:
+        return paths.format(**Variables)
+    elif type(paths) is list:
+        return [x.format(**Variables) for x in paths]
+    return paths
 
 # ======================================
 # Vcxproj
@@ -329,6 +344,40 @@ def expand(string, vars, local_vars={}):
     return re.sub(r'\$(\$|\w*)', exp, string)
 
 # ======================================
+# CcTarget
+# ======================================
+class CcTarget(object):
+    def __init__(self):
+        super(CcTarget, self).__init__()
+
+        self.name = None
+        self.cflags = []    # 编译参数
+        self.incs = []      # 头文件搜索路径
+        self.defs = []      # 宏定义
+        self.src = None     # 源文件
+    
+    @classmethod
+    def generate_ninja_rule(cls, writer):
+        if os.name == 'posix':
+            writer.rule('cc', '{cc} -o $out -c $in -MMD -MF $in.d $cflags $incs $defs'.format(cc=CC), description='CC $in', depfile='$in.d', deps='gcc')
+        elif os.name == 'nt':
+            writer.rule('cc', '{cc} /showIncludes /Fo$out -c $in $cflags $incs $defs'.format(cc=CC), description='CC $in', deps='msvc')
+        writer.newline()
+
+    def generate_ninja_build(self, writer):
+        target = self.name
+        cflags = ' '.join(self.cflags)
+        if os.name == 'posix':
+            incs = ' '.join(['-I' + inc for inc in self.incs])
+            defs = ' '.join(['-D' + define for define in self.defs])
+        elif os.name == 'nt':
+            incs = ' '.join(['/I' + inc for inc in self.incs])
+            defs = ' '.join(['/D ' + define for define in self.defs])
+        writer.comment('=== build cc target: {target} ==='.format(target=target))
+        writer.build(target, 'cc', inputs=self.src, variables={'cflags':cflags, 'incs':incs, 'defs':defs})
+        writer.newline()
+
+# ======================================
 # CxxTarget
 # ======================================
 class CxxTarget(object):
@@ -448,7 +497,8 @@ class ExeTarget(UserTarget):
         Targets.append(self)
 
         self.name = None
-        self.cxxflags = []  # 编译参数
+        self.cflags = []    # c文件编译参数
+        self.cxxflags = []  # c++文件编译参数
         self.incs = []      # 头文件搜索路径
         self.defs = []      # 宏定义
         self.hdrs = []      # 头文件列表
@@ -460,8 +510,13 @@ class ExeTarget(UserTarget):
     def generate_ninja_build(self, writer):
         objs = []
         for src in self.srcs:
-            cxx_target = CxxTarget()
-            cxx_target.name = os.path.join(BuildOutput, src) + OBJ_EXTENSION
+            if src.endswith('.c'):
+                cxx_target = CcTarget()
+                cxx_target.cflags = self.cflags
+            else:
+                cxx_target = CxxTarget()
+                cxx_target.cxxflags = self.cxxflags
+            cxx_target.name = os.path.join(Variables['build_dir'], src) + OBJ_EXTENSION
             cxx_target.cxxflags = self.cxxflags
             cxx_target.incs = self.incs
             cxx_target.defs = self.defs
@@ -470,10 +525,10 @@ class ExeTarget(UserTarget):
             objs.append(cxx_target.name)
         
         link_target = LinkTarget()
-        link_target.name = os.path.join(BuildOutput, self.name)
-        link_target.deps = self.deps
+        link_target.name = format_variables(self.name)
+        link_target.deps = format_variables(self.deps)
         link_target.ldflags = self.ldflags
-        link_target.libs = self.libs
+        link_target.libs = format_variables(self.libs)
         link_target.objs = objs
         link_target.generate_ninja_build(writer)
 
@@ -486,7 +541,8 @@ class SharedLibraryTarget(UserTarget):
         Targets.append(self)
 
         self.name = None
-        self.cxxflags = []  # 编译参数
+        self.cflags = []    # c文件编译参数
+        self.cxxflags = []  # c++文件编译参数
         self.incs = []      # 头文件搜索路径
         self.defs = []      # 宏定义
         self.hdrs = []      # 头文件列表
@@ -498,9 +554,13 @@ class SharedLibraryTarget(UserTarget):
     def generate_ninja_build(self, writer):
         objs = []
         for src in self.srcs:
-            cxx_target = CxxTarget()
-            cxx_target.name = os.path.join(BuildOutput, src) + OBJ_EXTENSION
-            cxx_target.cxxflags = self.cxxflags
+            if src.endswith('.c'):
+                cxx_target = CcTarget()
+                cxx_target.cflags = self.cflags
+            else:
+                cxx_target = CxxTarget()
+                cxx_target.cxxflags = self.cxxflags
+            cxx_target.name = os.path.join(Variables['build_dir'], src) + OBJ_EXTENSION
             cxx_target.incs = self.incs
             cxx_target.defs = self.defs
             cxx_target.src = src
@@ -508,14 +568,14 @@ class SharedLibraryTarget(UserTarget):
             objs.append(cxx_target.name)
         
         link_target = LinkTarget()
-        link_target.name = os.path.join(BuildOutput, self.name)
-        link_target.deps = self.deps
+        link_target.name = format_variables(self.name)
+        link_target.deps = format_variables(self.deps)
         link_target.ldflags = self.ldflags
         if os.name == 'posix':
             link_target.ldflags += ['-shared']
         elif os.name == 'nt':
             link_target.ldflags += ['/DLL']
-        link_target.libs = self.libs
+        link_target.libs = format_variables(self.libs)
         link_target.objs = objs
         link_target.generate_ninja_build(writer)
 
@@ -528,7 +588,8 @@ class StaticLibraryTarget(UserTarget):
         Targets.append(self)
 
         self.name = None
-        self.cxxflags = []  # 编译参数
+        self.cflags = []    # c文件编译参数
+        self.cxxflags = []  # c++文件编译参数
         self.incs = []      # 头文件搜索路径
         self.defs = []      # 宏定义
         self.hdrs = []      # 头文件列表
@@ -537,8 +598,13 @@ class StaticLibraryTarget(UserTarget):
     def generate_ninja_build(self, writer):
         objs = []
         for src in self.srcs:
-            cxx_target = CxxTarget()
-            cxx_target.name = os.path.join(BuildOutput, src) + OBJ_EXTENSION
+            if src.endswith('.c'):
+                cxx_target = CcTarget()
+                cxx_target.cflags = self.cflags
+            else:
+                cxx_target = CxxTarget()
+                cxx_target.cxxflags = self.cxxflags
+            cxx_target.name = os.path.join(Variables['build_dir'], src) + OBJ_EXTENSION
             cxx_target.cxxflags = self.cxxflags
             cxx_target.incs = self.incs
             cxx_target.defs = self.defs
@@ -547,7 +613,7 @@ class StaticLibraryTarget(UserTarget):
             objs.append(cxx_target.name)
         
         archives_target = ArchivesTarget()
-        archives_target.name = os.path.join(BuildOutput, self.name)
+        archives_target.name = format_variables(self.name)
         archives_target.objs = objs
         archives_target.generate_ninja_build(writer)
 
@@ -580,7 +646,11 @@ CurrLodingFilePath = None
 def main():
     parser = argparse.ArgumentParser(description='configure c/c++ build system')
     parser.add_argument('--generate-vcxproj', action='store_true', help='generate visual stdio project file (.vcxproj)')
+    parser.add_argument('--type', choices=['debug', 'release'], default='debug', help='default is debug')
     args = parser.parse_args()
+
+    # setup variables
+    setup_variables(args)
 
     # load BUILD.py
     targets_cnt = 0
@@ -605,6 +675,7 @@ def main():
     writer.newline()
 
     # generate rules
+    CcTarget.generate_ninja_rule(writer)
     CxxTarget.generate_ninja_rule(writer)
     LinkTarget.generate_ninja_rule(writer)
     ArchivesTarget.generate_ninja_rule(writer)

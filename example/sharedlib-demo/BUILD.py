@@ -8,7 +8,7 @@ class SharedLibraryDemo(SharedLibraryTarget):
         super(SharedLibraryDemo, self).__init__()
         
         if os.name == 'posix':
-            self.name = 'example/sharedlib-demo/libx.so'
+            self.name = '{build_dir}/example/sharedlib-demo/libx.so'
             self.cxxflags = ['-g']                          # 编译参数
             self.incs = []                                  # 头文件搜索路径
             self.srcs = ['example/sharedlib-demo/x.cpp']    # 源文件列表
@@ -17,7 +17,7 @@ class SharedLibraryDemo(SharedLibraryTarget):
             self.libs = []                                  # 链接的库文件
 
         elif os.name == 'nt':
-            self.name = 'example\\sharedlib-demo\\libx.dll'
+            self.name = '{build_dir}\\example\\sharedlib-demo\\libx.dll'
             self.cxxflags = []                              # 编译参数
             self.incs = []                                  # 头文件搜索路径
             self.srcs = ['example\\sharedlib-demo\\x.cpp']  # 源文件列表

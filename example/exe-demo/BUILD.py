@@ -9,7 +9,7 @@ class ExeDemo(ExeTarget):
         super(ExeDemo, self).__init__()
         
         if os.name == 'posix':
-            self.name = 'example/exe-demo/a.out'
+            self.name = '{build_dir}/example/exe-demo/a.out'
             self.cxxflags = ['-g']                          # 编译参数
             self.incs = ['example/exe-demo/']               # 头文件搜索路径
             self.srcs = glob.glob('example/exe-demo/*.cpp') # 源文件列表
@@ -18,7 +18,7 @@ class ExeDemo(ExeTarget):
             self.libs = []                                  # 链接的库文件
 
         elif os.name == 'nt':
-            self.name = 'example\\exe-demo\\a.exe'
+            self.name = '{build_dir}\\example\\exe-demo\\a.exe'
             self.cxxflags = ['/Od']                         # 编译参数
             self.incs = ['example\\exe-demo\\']             # 头文件搜索路径
             self.srcs = glob.glob('example\\exe-demo\\*.cpp') # 源文件列表
