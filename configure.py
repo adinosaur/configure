@@ -17,6 +17,7 @@ except ImportError:
 
 
 Targets = []
+Args = None
 
 # ======================================
 # Config
@@ -34,15 +35,13 @@ elif os.name == 'nt':
     AR = 'lib.exe'
     OBJ_EXTENSION = '.obj'
 
-
 # ======================================
 # Variables
 # ======================================
 Variables = {}
 
-def setup_variables(args):
-    Variables['args'] = args
-    Variables['build_dir'] = '.build_debug' if args.type == 'debug' else '.build_release'
+def setup_variables():
+    Variables['build_dir'] = '.build_debug' if Args.type == 'debug' else '.build_release'
 
 def format_variables(paths):
     if type(paths) is str:
@@ -367,6 +366,9 @@ class CcTarget(object):
     def generate_ninja_build(self, writer):
         target = self.name
         cflags = ' '.join(self.cflags)
+        # add cwd in include file
+        if not '.' in self.incs:
+            self.incs.append('.')
         if os.name == 'posix':
             incs = ' '.join(['-I' + inc for inc in self.incs])
             defs = ' '.join(['-D' + define for define in self.defs])
@@ -401,6 +403,9 @@ class CxxTarget(object):
     def generate_ninja_build(self, writer):
         target = self.name
         cxxflags = ' '.join(self.cxxflags)
+        # add cwd in include file
+        if not '.' in self.incs:
+            self.incs.append('.')
         if os.name == 'posix':
             incs = ' '.join(['-I' + inc for inc in self.incs])
             defs = ' '.join(['-D' + define for define in self.defs])
@@ -465,6 +470,65 @@ class ArchivesTarget(object):
         writer.newline()
 
 # ======================================
+# UnityTarget
+# ======================================
+class UnityTarget(object):
+    def __init__(self):
+        super(UnityTarget, self).__init__()
+
+        self.name = None
+        self.srcs = []
+    
+    @classmethod
+    def generate_ninja_rule(cls, writer):
+        writer.rule('unity', 'echo \'$content\' > $out', description='unity $out')
+        writer.newline()
+    
+    def generate_ninja_build(self, writer):
+        target = self.name
+        writer.comment('=== build unity target: {target} ==='.format(target=target))
+        writer.build(target, 'unity', inputs=self.srcs, variables={'content':'\\n'.join(['#include "{0}"'.format(src) for src in self.srcs])})
+        writer.newline()
+
+# how many source file will be merged into an unity file
+UNITY_SOURCE_SIZE = 20
+
+def get_unity_targets(path, srcs):
+    c_srcs = []
+    cxx_srcs = []
+    for src in srcs:
+        if src.endswith('.c'):
+            c_srcs.append(src)
+        else:
+            cxx_srcs.append(src)
+    
+    unity_targets = []
+    
+    unity_target = UnityTarget()
+    unity_target.name = os.path.join(path, 'unity{0}.c'.format(len(unity_targets)))
+    unity_targets.append(unity_target)
+    for src in c_srcs:
+        if len(unity_target.srcs) >= UNITY_SOURCE_SIZE:
+            unity_target = UnityTarget()
+            unity_target.name = os.path.join(path, 'unity{0}.c'.format(len(unity_targets)))
+            unity_targets.append(unity_target)
+        unity_target.srcs.append(src)
+    unity_targets = [t for t in unity_targets if len(t.srcs) > 0]
+
+    unity_target = UnityTarget()
+    unity_target.name = os.path.join(path, 'unity{0}.cpp'.format(len(unity_targets)))
+    unity_targets.append(unity_target)
+    for src in cxx_srcs:
+        if len(unity_target.srcs) >= UNITY_SOURCE_SIZE:
+            unity_target = UnityTarget()
+            unity_target.name = os.path.join(path, 'unity{0}.cpp'.format(len(unity_targets)))
+            unity_targets.append(unity_target)
+        unity_target.srcs.append(src)
+    unity_targets = [t for t in unity_targets if len(t.srcs) > 0]
+    
+    return unity_targets
+
+# ======================================
 # User Target
 # ======================================
 class UserTarget(object):
@@ -507,16 +571,30 @@ class ExeTarget(UserTarget):
         self.ldflags = []   # 链接的参数
         self.libs = []      # 链接的库文件
 
+        self.enable_unity = False # 是否开启unity编译
+
     def generate_ninja_build(self, writer):
         objs = []
-        for src in self.srcs:
+
+        if self.enable_unity:
+            unity_targets = get_unity_targets(format_variables(self.name) + '.unity', self.srcs)
+            for unity_target in unity_targets:
+                unity_target.generate_ninja_build(writer)
+            srcs = [t.name for t in unity_targets]
+        else:
+            srcs = self.srcs
+        
+        for src in srcs:
             if src.endswith('.c'):
                 cxx_target = CcTarget()
                 cxx_target.cflags = self.cflags
             else:
                 cxx_target = CxxTarget()
                 cxx_target.cxxflags = self.cxxflags
-            cxx_target.name = os.path.join(Variables['build_dir'], src) + OBJ_EXTENSION
+            if src.startswith(Variables['build_dir']):
+                cxx_target.name = src + OBJ_EXTENSION
+            else:
+                cxx_target.name = os.path.join(Variables['build_dir'], src) + OBJ_EXTENSION
             cxx_target.cxxflags = self.cxxflags
             cxx_target.incs = self.incs
             cxx_target.defs = self.defs
@@ -550,17 +628,31 @@ class SharedLibraryTarget(UserTarget):
         self.deps = []      # 链接的依赖文件
         self.ldflags = []   # 链接的参数
         self.libs = []      # 链接的库文件
+
+        self.enable_unity = False # 是否开启unity编译
     
     def generate_ninja_build(self, writer):
         objs = []
-        for src in self.srcs:
+
+        if self.enable_unity:
+            unity_targets = get_unity_targets(format_variables(self.name) + '.unity', self.srcs)
+            for unity_target in unity_targets:
+                unity_target.generate_ninja_build(writer)
+            srcs = [t.name for t in unity_targets]
+        else:
+            srcs = self.srcs
+
+        for src in srcs:
             if src.endswith('.c'):
                 cxx_target = CcTarget()
                 cxx_target.cflags = self.cflags
             else:
                 cxx_target = CxxTarget()
                 cxx_target.cxxflags = self.cxxflags
-            cxx_target.name = os.path.join(Variables['build_dir'], src) + OBJ_EXTENSION
+            if src.startswith(Variables['build_dir']):
+                cxx_target.name = src + OBJ_EXTENSION
+            else:
+                cxx_target.name = os.path.join(Variables['build_dir'], src) + OBJ_EXTENSION
             cxx_target.incs = self.incs
             cxx_target.defs = self.defs
             cxx_target.src = src
@@ -594,17 +686,31 @@ class StaticLibraryTarget(UserTarget):
         self.defs = []      # 宏定义
         self.hdrs = []      # 头文件列表
         self.srcs = []      # 源文件列表
+
+        self.enable_unity = False # 是否开启unity编译
     
     def generate_ninja_build(self, writer):
         objs = []
-        for src in self.srcs:
+
+        if self.enable_unity:
+            unity_targets = get_unity_targets(format_variables(self.name) + '.unity', self.srcs)
+            for unity_target in unity_targets:
+                unity_target.generate_ninja_build(writer)
+            srcs = [t.name for t in unity_targets]
+        else:
+            srcs = self.srcs
+
+        for src in srcs:
             if src.endswith('.c'):
                 cxx_target = CcTarget()
                 cxx_target.cflags = self.cflags
             else:
                 cxx_target = CxxTarget()
                 cxx_target.cxxflags = self.cxxflags
-            cxx_target.name = os.path.join(Variables['build_dir'], src) + OBJ_EXTENSION
+            if src.startswith(Variables['build_dir']):
+                cxx_target.name = src + OBJ_EXTENSION
+            else:
+                cxx_target.name = os.path.join(Variables['build_dir'], src) + OBJ_EXTENSION
             cxx_target.cxxflags = self.cxxflags
             cxx_target.incs = self.incs
             cxx_target.defs = self.defs
@@ -649,8 +755,12 @@ def main():
     parser.add_argument('--type', choices=['debug', 'release'], default='debug', help='default is debug')
     args = parser.parse_args()
 
+    # setup args
+    global Args
+    Args = args
+
     # setup variables
-    setup_variables(args)
+    setup_variables()
 
     # load BUILD.py
     targets_cnt = 0
@@ -679,6 +789,7 @@ def main():
     CxxTarget.generate_ninja_rule(writer)
     LinkTarget.generate_ninja_rule(writer)
     ArchivesTarget.generate_ninja_rule(writer)
+    UnityTarget.generate_ninja_rule(writer)
 
     # generate builds
     for target in Targets:
