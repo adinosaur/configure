@@ -753,7 +753,19 @@ def main():
     parser = argparse.ArgumentParser(description='configure c/c++ build system')
     parser.add_argument('--generate-vcxproj', action='store_true', help='generate visual stdio project file (.vcxproj)')
     parser.add_argument('--type', choices=['debug', 'release'], default='debug', help='default is debug')
+    parser.add_argument('--distcc', action='store_true', help='use distcc')
+    parser.add_argument('--ccache', action='store_true', help='use ccache')
     args = parser.parse_args()
+
+    global CC, CXX
+    
+    if args.distcc:
+        CC = 'distcc ' + CC
+        CXX = 'distcc ' + CXX
+    
+    if args.ccache:
+        CC = 'ccache ' + CC
+        CXX = 'ccache ' + CXX
 
     # setup args
     global Args
