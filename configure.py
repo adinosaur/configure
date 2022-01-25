@@ -30,12 +30,14 @@ if os.name == 'posix':
     LD = 'g++'
     AR = 'ar'
     OBJ_EXTENSION = '.o'
+    NINJA = './ninja/ninja-linux/ninja'
 elif os.name == 'nt':
     CC = 'cl.exe'
     CXX = 'cl.exe'
     LD = 'link.exe'
     AR = 'lib.exe'
     OBJ_EXTENSION = '.obj'
+    NINJA = '.\\ninja\\ninja-win\\ninja.exe'
 
 # ======================================
 # Variables
@@ -483,13 +485,22 @@ class UnityTarget(object):
     
     @classmethod
     def generate_ninja_rule(cls, writer):
-        writer.rule('unity', 'echo \'$content\' > $out', description='unity $out')
+        writer.rule('unity', 'python gen_unity_source.py $out $in', description='unity $out')
         writer.newline()
+
+        with open('gen_unity_source.py', 'w') as f:
+            content = '''
+import sys
+with open(sys.argv[1], 'w') as f:
+    for arg in sys.argv[2:]:
+        f.write('#include "{0}"\\n'.format(arg))
+'''
+            f.write(content)
     
     def generate_ninja_build(self, writer):
         target = self.name
         writer.comment('=== build unity target: {target} ==='.format(target=target))
-        writer.build(target, 'unity', inputs=self.srcs, variables={'content':'\\n'.join(['#include "{0}"'.format(src) for src in self.srcs])})
+        writer.build(target, 'unity', inputs=self.srcs)
         writer.newline()
 
 # how many source file will be merged into an unity file
@@ -767,6 +778,8 @@ def main():
     parser.add_argument('--type', choices=['debug', 'release'], default='debug', help='default is debug')
     parser.add_argument('--use-distcc', type=bool, choices=[True, False], help='use distcc', default=False)
     parser.add_argument('--use-ccache', type=bool, choices=[True, False], help='use ccache', default=False)
+    parser.add_argument('-j', '--jobs', type=int, help='Allow N jobs at once; default is {0} in this system'.format(os.cpu_count()), default=os.cpu_count())
+    parser.add_argument('--rebuild', action='store_true', help='clean and build')
     args = parser.parse_args()
 
     global CC, CXX
@@ -833,10 +846,10 @@ def main():
     out.close()
 
     # run ninja
-    if os.name == 'posix':
-        p = subprocess.Popen('ninja/ninja-linux/ninja', shell=True)
-    elif os.name == 'nt':
-        p = subprocess.Popen('ninja\\ninja-win\\ninja.exe', shell=True)
+    if args.rebuild:
+        p = subprocess.Popen(NINJA + ' -t clean'.format(args.jobs), shell=True)
+        p.communicate()
+    p = subprocess.Popen(NINJA + ' -j{0}'.format(args.jobs), shell=True)
     p.communicate()
     return p.returncode
 
