@@ -9,7 +9,7 @@ class CDemo(ExeTarget):
         super(CDemo, self).__init__()
         
         if os.name == 'posix':
-            self.name = '{build_dir}/example/c-demo/a.out'
+            self.name = '{BUILD_DIR}/example/c-demo/a.out'
             self.cflags = ['-g']                            # 编译参数
             self.incs = ['example/c-demo/']                 # 头文件搜索路径
             self.srcs = glob.glob('example/c-demo/*.c')     # 源文件列表
@@ -18,7 +18,7 @@ class CDemo(ExeTarget):
             self.libs = []                                  # 链接的库文件
 
         elif os.name == 'nt':
-            self.name = '{build_dir}\\example\\c-demo\\a.exe'
+            self.name = '{BUILD_DIR}\\example\\c-demo\\a.exe'
             self.cflags = ['/Od']                           # 编译参数
             self.incs = ['example\\c-demo\\']               # 头文件搜索路径
             self.srcs = glob.glob('example\\c-demo\\*.c')   # 源文件列表

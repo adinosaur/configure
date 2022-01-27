@@ -45,14 +45,27 @@ elif os.name == 'nt':
 Variables = {}
 
 def setup_variables():
-    Variables['build_dir'] = '.build_debug' if Args.type == 'debug' else '.build_release'
+    Variables['CC'] = CC
+    Variables['CXX'] = CXX
+    Variables['LD'] = LD
+    Variables['AR'] = AR
+    Variables['OBJ_EXTENSION'] = OBJ_EXTENSION
+    Variables['NINJA'] = NINJA
+    Variables['BUILD_DIR'] = '.build_debug' if Args.type == 'debug' else '.build_release'
+    Variables['CURR_DIR'] = ''
 
 def format_variables(paths):
-    if type(paths) is str:
-        return paths.format(**Variables)
-    elif type(paths) is list:
-        return [x.format(**Variables) for x in paths]
-    return paths
+    try:
+        if type(paths) is str:
+            return paths.format(**Variables)
+        elif type(paths) is list:
+            return [x.format(**Variables) for x in paths]
+        return paths
+    except KeyError as e:
+        print('Invalid Variables in', paths)
+        import traceback; traceback.print_exc(file=sys.stdout)
+        sys.exit(1)
+
 
 # ======================================
 # Vcxproj
@@ -368,19 +381,25 @@ class CcTarget(object):
         writer.newline()
 
     def generate_ninja_build(self, writer):
-        target = self.name
-        cflags = ' '.join(self.cflags)
+        if not self.name.startswith('{BUILD_DIR}'):
+            self.name = os.path.join('{BUILD_DIR}', self.name)
         # add cwd in include file
         if not '.' in self.incs:
             self.incs.append('.')
+        
+        target = format_variables(self.name)
+        incs = format_variables(self.incs)
+        src = format_variables(self.src)
+        cflags = ' '.join(self.cflags)
+        
         if os.name == 'posix':
-            incs = ' '.join(['-I' + inc for inc in self.incs])
+            incs = ' '.join(['-I' + inc for inc in incs])
             defs = ' '.join(['-D' + define for define in self.defs])
         elif os.name == 'nt':
-            incs = ' '.join(['/I' + inc for inc in self.incs])
+            incs = ' '.join(['/I' + inc for inc in incs])
             defs = ' '.join(['/D ' + define for define in self.defs])
         writer.comment('=== build cc target: {target} ==='.format(target=target))
-        writer.build(target, 'cc', inputs=self.src, variables={'cflags':cflags, 'incs':incs, 'defs':defs})
+        writer.build(target, 'cc', inputs=src, variables={'cflags':cflags, 'incs':incs, 'defs':defs})
         writer.newline()
 
 # ======================================
@@ -405,19 +424,25 @@ class CxxTarget(object):
         writer.newline()
 
     def generate_ninja_build(self, writer):
-        target = self.name
-        cxxflags = ' '.join(self.cxxflags)
+        if not self.name.startswith('{BUILD_DIR}'):
+            self.name = os.path.join('{BUILD_DIR}', self.name)
         # add cwd in include file
         if not '.' in self.incs:
             self.incs.append('.')
+        
+        target = format_variables(self.name)
+        incs = format_variables(self.incs)
+        src = format_variables(self.src)
+        cxxflags = ' '.join(self.cxxflags)
+        
         if os.name == 'posix':
-            incs = ' '.join(['-I' + inc for inc in self.incs])
+            incs = ' '.join(['-I' + inc for inc in incs])
             defs = ' '.join(['-D' + define for define in self.defs])
         elif os.name == 'nt':
-            incs = ' '.join(['/I' + inc for inc in self.incs])
+            incs = ' '.join(['/I' + inc for inc in incs])
             defs = ' '.join(['/D ' + define for define in self.defs])
         writer.comment('=== build cxx target: {target} ==='.format(target=target))
-        writer.build(target, 'cxx', inputs=self.src, variables={'cxxflags':cxxflags, 'incs':incs, 'defs':defs})
+        writer.build(target, 'cxx', inputs=src, variables={'cxxflags':cxxflags, 'incs':incs, 'defs':defs})
         writer.newline()
 
 # ======================================
@@ -442,11 +467,13 @@ class LinkTarget(object):
         writer.newline()
     
     def generate_ninja_build(self, writer):
-        target = self.name
+        target = format_variables(self.name)
+        libs = format_variables(self.libs)
+        deps = format_variables(self.deps)
+        objs = format_variables(self.objs)
         ldflags = ' '.join(self.ldflags)
-        inputs = self.objs
         writer.comment('=== build link target: {target} ==='.format(target=target))
-        writer.build(target, 'link', inputs=inputs, variables={'ldflags':ldflags, 'libs':self.libs}, implicit=self.deps)
+        writer.build(target, 'link', inputs=objs, variables={'ldflags':ldflags, 'libs':libs}, implicit=deps)
         writer.newline()
 
 # ======================================
@@ -468,9 +495,10 @@ class ArchivesTarget(object):
         writer.newline()
     
     def generate_ninja_build(self, writer):
-        target = self.name
+        target = format_variables(self.name)
+        objs = format_variables(self.objs)
         writer.comment('=== build ar target: {target} ==='.format(target=target))
-        writer.build(target, 'ar', inputs=self.objs)
+        writer.build(target, 'ar', inputs=objs)
         writer.newline()
 
 # ======================================
@@ -498,7 +526,9 @@ with open(sys.argv[1], 'w') as f:
             f.write(content)
     
     def generate_ninja_build(self, writer):
-        target = self.name
+        if not self.name.startswith('{BUILD_DIR}'):
+            self.name = os.path.join('{BUILD_DIR}', self.name)
+        target = format_variables(self.name)
         writer.comment('=== build unity target: {target} ==='.format(target=target))
         writer.build(target, 'unity', inputs=self.srcs)
         writer.newline()
@@ -507,6 +537,9 @@ with open(sys.argv[1], 'w') as f:
 UNITY_SOURCE_SIZE = 20
 
 def get_unity_targets(path, srcs):
+    if not path.startswith('{BUILD_DIR}'):
+        path = os.path.join('{BUILD_DIR}', path)
+
     c_srcs = []
     cxx_srcs = []
     for src in srcs:
@@ -598,7 +631,7 @@ class ExeTarget(UserTarget):
         objs = []
 
         if self.enable_unity:
-            unity_targets = get_unity_targets(format_variables(self.name) + '.unity', self.srcs)
+            unity_targets = get_unity_targets(self.name + '.unity', self.srcs)
             for unity_target in unity_targets:
                 unity_target.generate_ninja_build(writer)
             srcs = [t.name for t in unity_targets]
@@ -612,10 +645,7 @@ class ExeTarget(UserTarget):
             else:
                 cxx_target = CxxTarget()
                 cxx_target.cxxflags = self.cxxflags
-            if src.startswith(Variables['build_dir']):
-                cxx_target.name = src + OBJ_EXTENSION
-            else:
-                cxx_target.name = os.path.join(Variables['build_dir'], src) + OBJ_EXTENSION
+            cxx_target.name = src + OBJ_EXTENSION
             cxx_target.cxxflags = self.cxxflags
             cxx_target.incs = self.incs
             cxx_target.defs = self.defs
@@ -624,10 +654,10 @@ class ExeTarget(UserTarget):
             objs.append(cxx_target.name)
         
         link_target = LinkTarget()
-        link_target.name = format_variables(self.name)
-        link_target.deps = format_variables(self.deps)
+        link_target.name = self.name
+        link_target.deps = self.deps
         link_target.ldflags = self.ldflags
-        link_target.libs = format_variables(self.libs)
+        link_target.libs = self.libs
         link_target.objs = objs
         link_target.generate_ninja_build(writer)
 
@@ -657,7 +687,7 @@ class SharedLibraryTarget(UserTarget):
         objs = []
 
         if self.enable_unity:
-            unity_targets = get_unity_targets(format_variables(self.name) + '.unity', self.srcs)
+            unity_targets = get_unity_targets(self.name + '.unity', self.srcs)
             for unity_target in unity_targets:
                 unity_target.generate_ninja_build(writer)
             srcs = [t.name for t in unity_targets]
@@ -671,10 +701,7 @@ class SharedLibraryTarget(UserTarget):
             else:
                 cxx_target = CxxTarget()
                 cxx_target.cxxflags = self.cxxflags
-            if src.startswith(Variables['build_dir']):
-                cxx_target.name = src + OBJ_EXTENSION
-            else:
-                cxx_target.name = os.path.join(Variables['build_dir'], src) + OBJ_EXTENSION
+            cxx_target.name = src + OBJ_EXTENSION
             cxx_target.incs = self.incs
             cxx_target.defs = self.defs
             cxx_target.src = src
@@ -682,14 +709,14 @@ class SharedLibraryTarget(UserTarget):
             objs.append(cxx_target.name)
         
         link_target = LinkTarget()
-        link_target.name = format_variables(self.name)
-        link_target.deps = format_variables(self.deps)
+        link_target.name = self.name
+        link_target.deps = self.deps
         link_target.ldflags = self.ldflags
         if os.name == 'posix':
             link_target.ldflags += ['-shared']
         elif os.name == 'nt':
             link_target.ldflags += ['/DLL']
-        link_target.libs = format_variables(self.libs)
+        link_target.libs = self.libs
         link_target.objs = objs
         link_target.generate_ninja_build(writer)
 
@@ -716,7 +743,7 @@ class StaticLibraryTarget(UserTarget):
         objs = []
 
         if self.enable_unity:
-            unity_targets = get_unity_targets(format_variables(self.name) + '.unity', self.srcs)
+            unity_targets = get_unity_targets(self.name + '.unity', self.srcs)
             for unity_target in unity_targets:
                 unity_target.generate_ninja_build(writer)
             srcs = [t.name for t in unity_targets]
@@ -730,10 +757,7 @@ class StaticLibraryTarget(UserTarget):
             else:
                 cxx_target = CxxTarget()
                 cxx_target.cxxflags = self.cxxflags
-            if src.startswith(Variables['build_dir']):
-                cxx_target.name = src + OBJ_EXTENSION
-            else:
-                cxx_target.name = os.path.join(Variables['build_dir'], src) + OBJ_EXTENSION
+            cxx_target.name = src + OBJ_EXTENSION
             cxx_target.cxxflags = self.cxxflags
             cxx_target.incs = self.incs
             cxx_target.defs = self.defs
@@ -742,7 +766,7 @@ class StaticLibraryTarget(UserTarget):
             objs.append(cxx_target.name)
         
         archives_target = ArchivesTarget()
-        archives_target.name = format_variables(self.name)
+        archives_target.name = self.name
         archives_target.objs = objs
         archives_target.generate_ninja_build(writer)
 
